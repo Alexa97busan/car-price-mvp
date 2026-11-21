@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>중고차 적정가 — QM6 · SM6 LPG</title>
+<meta name="description" content="르노 QM6·SM6 LPG 중고차 실매물 기반 적정가 계산기. 연식·주행·트림 조건으로 예상 가격 범위와 급매/적정/비쌈을 판정합니다.">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wrap topbar-inner">
+    <div class="brand">중고차 적정가 <span>Renault used-car price lab</span></div>
+    <div class="meta" id="metaLine">데이터 불러오는 중…</div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="grid">
+
+    <!-- INPUT -->
+    <section class="card input-card" aria-labelledby="inputTitle">
+      <h2 id="inputTitle">조건 입력</h2>
+
+      <div class="row">
+        <label class="field">차종
+          <select id="model"></select>
+        </label>
+        <label class="field">연료
+          <select id="fuel"><option value="LPG">LPG</option></select>
+        </label>
+      </div>
+
+      <div class="row">
+        <label class="field">연식
+          <select id="year"></select>
+        </label>
+        <label class="field">트림
+          <select id="trim"></select>
+        </label>
+      </div>
+
+      <label class="field">주행거리
+        <div class="km-box">
+          <input id="km" type="number" inputmode="numeric" min="0" max="300000" step="1000" value="70000"> <span>km</span>
+        </div>
+      </label>
+      <input id="kmRange" class="slider" type="range" min="0" max="300000" step="1000" value="70000" aria-label="주행거리 슬라이더">
+      <div class="scale"><span>0</span><span>15만</span><span>30만</span></div>
+
+      <details class="opt-box" open>
+        <summary>옵션 선택 <span id="optCount" class="opt-count">0개</span></summary>
+        <div id="optList" class="opt-list"></div>
+        <p class="hint">옵션은 가격에 가산하지 않고, 장착률 정보로만 표시합니다. <a href="#why">이유</a></p>
+      </details>
+
+      <label class="field price-field">매물 가격 <span class="opt-tag">선택</span>
+        <div class="km-box">
+          <input id="price" type="number" inputmode="numeric" min="0" max="10000" step="10" placeholder="예: 1550"> <span>만원</span>
+        </div>
+      </label>
+      <p class="hint">가격을 입력하면 현재 매물이 급매·적정·비쌈인지 바로 판정합니다.</p>
+    </section>
+
+    <!-- RESULT -->
+    <section class="card result-card" aria-labelledby="resultTitle" aria-live="polite">
+      <div class="result-head">
+        <h2 id="resultTitle">적정가 판정</h2>
+        <span id="verdict" class="verdict hidden">—</span>
+      </div>
+
+      <div class="median-row">
+        <div id="median" class="big">—</div>
+        <div class="median-sub" id="medianSub"></div>
+      </div>
+
+      <div class="range" id="rangeBar">
+        <div class="bar"><div class="band" id="band"></div><div class="mark" id="medianMark"></div><div class="pmark hidden" id="priceMark"></div></div>
+        <div class="scale" id="rangeScale"></div>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat"><span>표본</span><b id="sampleN">—</b></div>
+        <div class="stat"><span>신뢰도</span><b id="confidence">—</b></div>
+        <div class="stat"><span>주행 보정</span><b id="kmAdj">—</b></div>
+        <div class="stat"><span>신차 대비</span><b id="residual">—</b></div>
+      </div>
+
+      <div class="hist-wrap">
+        <div class="label">같은 조건 매물 가격 분포</div>
+        <div class="hist" id="hist"></div>
+        <div class="scale" id="histScale"></div>
+      </div>
+
+      <p class="note" id="calcNote"></p>
+
+      <a class="btn" id="encarLink" href="https://www.encar.com/index.do" target="_blank" rel="noopener">엔카에서 이 조건 매물 보기 →</a>
+      <button class="btn ghost" id="shareBtn" type="button">조건 링크 복사</button>
+    </section>
+  </div>
+
+  <!-- BOTTOM -->
+  <div class="bottom">
+    <section class="card">
+      <h2>옵션 장착률</h2>
+      <div id="optStats" class="stat-list"></div>
+      <p class="hint">최근 300대 표본 기준. 옵션 유무는 가격 차이를 만들지 않는 것으로 분석되어 가산하지 않습니다.</p>
+    </section>
+
+    <section class="card" id="why">
+      <h2>데이터 안내</h2>
+      <div id="notice" class="notice"></div>
+      <p class="hint">실계약가는 등록 호가보다 3~10% 낮을 수 있습니다. 표본 10대 미만은 참고용입니다.</p>
+    </section>
+  </div>
+
+  <div class="sticky" id="sticky" aria-hidden="true">
+    <span id="stickyVerdict">적정가 계산 중…</span>
+    <span id="stickyRange"></span>
+  </div>
+</main>
+
+<footer class="wrap footer">
+  <span>데이터: 엔카 실매물 LPG 스냅샷 <span id="snapshotDate">—</span> · 중복 제거 기준</span>
+  <span>본 계산기는 참고용이며 매매 판단의 책임은 사용자에게 있습니다.</span>
+</footer>
+
+<script src="assets/app.js"></script>
+</body>
+</html>
