@@ -2,7 +2,7 @@ const $ = (sel) => document.querySelector(sel);
 const fmt = (n) => Number(n).toLocaleString("ko-KR");
 
 let DATA = null;   // {stats, options, meta}
-let state = { model: "QM6", fuel: "lpg", year: 2021, km: 70000, trim: "all", price: null, opts: new Set() };
+let state = { model: "QM6", fuel: "lpg", year: 2021, km: 70000, trim: "all", price: null, opts: new Set(), exclude: true };
 let hadYearParam = false;
 
 const FUEL_ORDER = ["lpg", "gasoline", "diesel", "hybrid", "ev", "other"];
@@ -29,6 +29,13 @@ function fuelKeys(md) {
     return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
   });
 }
+function activeData() {
+  const fd = fuelData();
+  const key = state.exclude ? "clean" : "all";
+  const v = fd.variants?.[key];
+  if (v && Object.keys(v.years).length) return v;
+  return fd.variants.all;
+}
 
 function readParams() {
   const q = new URLSearchParams(location.search);
@@ -40,6 +47,7 @@ function readParams() {
   if (q.get("t")) state.trim = q.get("t");
   if (q.get("p")) state.price = Number(q.get("p"));
   if (q.get("o")) state.opts = new Set(q.get("o").split(",").filter(Boolean));
+  if (q.get("x") === "0") state.exclude = false;
 }
 
 function writeParams() {
@@ -51,6 +59,7 @@ function writeParams() {
   if (state.trim !== "all") q.set("t", state.trim);
   if (state.price) q.set("p", state.price);
   if (state.opts.size) q.set("o", [...state.opts].join(","));
+  if (!state.exclude) q.set("x", "0");
   history.replaceState(null, "", "?" + q.toString());
 }
 
@@ -66,32 +75,32 @@ function fillFuels() {
   const keys = fuelKeys(md);
   if (!keys.includes(state.fuel)) state.fuel = keys[0];
   $("#fuel").innerHTML = keys.map(k =>
-    `<option value="${k}">${md.fuels[k].label} (${md.fuels[k].total}대)</option>`).join("");
+    `<option value="${k}">${md.fuels[k].label} (${state.exclude && md.fuels[k].total_clean ? md.fuels[k].total_clean : md.fuels[k].total}대)</option>`).join("");
   $("#fuel").value = state.fuel;
 }
 
-function yearsOf(fd) {
-  return Object.keys(fd.years).map(Number).sort((a, b) => b - a);
+function yearsOf(vd) {
+  return Object.keys(vd.years).map(Number).sort((a, b) => b - a);
 }
 
 function fillYears(preferGood = false) {
-  const fd = fuelData();
-  const years = yearsOf(fd);
-  const cur = fd.years[state.year];
+  const vd = activeData();
+  const years = yearsOf(vd);
+  const cur = vd.years[state.year];
   if (!years.includes(state.year) || (preferGood && (!cur || cur.n < 10))) {
-    const good = years.filter(y => fd.years[y].n >= 10);
+    const good = years.filter(y => vd.years[y].n >= 10);
     state.year = good.length ? good[0] : years[0];
   }
   $("#year").innerHTML = years.map(y => {
-    const s = fd.years[y];
+    const s = vd.years[y];
     return `<option value="${y}">${y}년${s.n < 10 ? " · 표본 적음" : ""}</option>`;
   }).join("");
   $("#year").value = String(state.year);
 }
 
 function fillTrims() {
-  const fd = fuelData();
-  const ys = fd.years[state.year];
+  const vd = activeData();
+  const ys = vd.years[state.year];
   if (!ys) return;
   const trims = ys.trims || {};
   const keys = Object.keys(trims).filter(t => trims[t].n >= 5).sort((a, b) => trims[b].n - trims[a].n);
@@ -133,14 +142,15 @@ function confidenceOf(n) {
 function compute() {
   const md = modelData();
   const fd = fuelData();
-  const ys = fd.years[state.year];
+  const vd = activeData();
+  const ys = vd.years[state.year];
   if (!ys) return null;
 
   const hasTrim = state.trim !== "all" && ys.trims?.[state.trim]?.n >= 5;
   const base = hasTrim ? ys.trims[state.trim] : ys;
 
   const km = Number.isFinite(state.km) ? state.km : base.median_km;
-  let adj = (fd.km_slope_per_10k * (km - base.median_km)) / 10000;
+  let adj = (vd.km_slope_per_10k * (km - base.median_km)) / 10000;
   const cap = base.median * 0.15;
   adj = Math.max(-cap, Math.min(cap, adj));
 
@@ -217,6 +227,8 @@ function render() {
   }
 
   const notes = [];
+  if (state.exclude) notes.push("렌터카·전손·침수·500만원 이상 사고 이력 매물을 제외했습니다.");
+  else notes.push("렌터카·사고 이력 포함 전체 매물 기준입니다.");
   if (!c.hasTrim) notes.push("트림 표본이 부족해 전체 트림 기준으로 계산했습니다.");
   else notes.push("가격 분포 막대는 전체 트림 기준입니다.");
   if (c.n < 10) notes.push("표본이 10대 미만이라 참고용입니다.");
@@ -275,6 +287,10 @@ function bind() {
     render();
   });
   $("#trim").addEventListener("change", (e) => { state.trim = e.target.value; render(); });
+  $("#excludeFlags").addEventListener("change", (e) => {
+    state.exclude = e.target.checked;
+    fillFuels(); fillYears(true); fillTrims(); render();
+  });
 
   const km = $("#km"), kmRange = $("#kmRange");
   km.addEventListener("input", () => {
@@ -313,6 +329,7 @@ async function main() {
   $("#km").value = state.km;
   $("#kmRange").value = state.km;
   $("#price").value = state.price || "";
+  $("#excludeFlags").checked = state.exclude;
   bind();
   render();
 }

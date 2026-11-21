@@ -3,13 +3,11 @@
 
 Sources (local, private snapshots):
   - encar_{MODEL}.json : Encar search API snapshots (2026-11-21)
-  - sample300_QM6.json / sample300_SM6.json / sample_{MODEL}.json : option samples
+  - flags_{MODEL}.json : rental/accident flags from record API
+  - sample*.json       : option samples
   - encar_options_standard.json : option dictionary
 
-Outputs:
-  - data/stats.json
-  - data/options.json
-  - data/meta.json
+Outputs: data/stats.json, data/options.json, data/meta.json
 """
 import json, statistics, collections, os
 import numpy as np
@@ -17,6 +15,8 @@ import numpy as np
 SRC = os.environ.get("ENCAR_SRC", r"C:/Users/cnd63/AppData/Local/Temp")
 OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 os.makedirs(OUT, exist_ok=True)
+
+SERIOUS_ACCIDENT_COST = 5_000_000  # 500만원 이상 사고는 제외 대상
 
 def load(name):
     with open(os.path.join(SRC, name), encoding="utf-8") as f:
@@ -29,14 +29,12 @@ FUEL_MAP = {
 }
 FUEL_LABEL = {"gasoline": "가솔린", "diesel": "디젤", "lpg": "LPG",
               "hybrid": "하이브리드", "ev": "전기", "other": "기타"}
-
 TRIM_TOKENS = ["프리미에르", "인스파이어", "퀘스트", "클래식", "RE", "LE", "SE", "PE", "필"]
 
 def trim_of(badge):
     b = badge or ""
     for t in TRIM_TOKENS:
-        if t in b:
-            return t
+        if t in b: return t
     return "기타"
 
 def pct(v, q):
@@ -64,23 +62,44 @@ def km_slope(rows):
     beta, *_ = np.linalg.lstsq(np.array(X), np.array(y, dtype=float), rcond=None)
     return round(float(beta[-1]), 1)
 
+def variant_stats(rows):
+    years = {}
+    for yv in sorted({r["year"] for r in rows}):
+        rs = [r for r in rows if r["year"] == yv]
+        if len(rs) < 3: continue
+        prices = [r["price"] for r in rs]
+        kms = [r["km"] for r in rs]
+        trims = {}
+        for tv in sorted({r["trim"] for r in rs}):
+            tr = [r for r in rs if r["trim"] == tv]
+            if len(tr) >= 5:
+                tp = [r["price"] for r in tr]; tk = [r["km"] for r in tr]
+                trims[tv] = {"n": len(tr), "median": round(statistics.median(tp)),
+                             "p25": round(pct(tp, 25)), "p75": round(pct(tp, 75)),
+                             "median_km": round(statistics.median(tk))}
+        years[str(yv)] = {
+            "n": len(rs), "median": round(statistics.median(prices)),
+            "p25": round(pct(prices, 25)), "p75": round(pct(prices, 75)),
+            "p10": round(pct(prices, 10)), "p90": round(pct(prices, 90)),
+            "min": min(prices), "max": max(prices),
+            "median_km": round(statistics.median(kms)),
+            "mean_km": round(statistics.mean(kms)),
+            "bins": hist_bins(prices), "trims": trims,
+        }
+    slope = km_slope(rows)
+    return {"years": years, "km_slope_per_10k": slope if slope is not None else -30.0}
+
 MODELS = [
     {"key": "QM6", "name": "QM6", "new_price_ref": {"lpg": 2923},
      "new_price_note": "2026년형 LPe LE 2,797 / RE 3,049의 중앙값"},
     {"key": "SM6", "name": "SM6", "new_price_ref": {"lpg": 2980},
      "new_price_note": "SM6 LPe 신차가 LE 2,838 / RE 3,122의 중앙값(2023 기준)"},
-    {"key": "XM3", "name": "XM3"},
-    {"key": "SM3", "name": "SM3"},
-    {"key": "SM5", "name": "SM5"},
-    {"key": "SM7", "name": "SM7"},
-    {"key": "QM3", "name": "QM3"},
-    {"key": "ARKANA", "name": "아르카나"},
-    {"key": "MASTER", "name": "마스터"},
-    {"key": "QM5", "name": "QM5"},
-    {"key": "CLIO", "name": "클리오"},
-    {"key": "TWIZY", "name": "트위지"},
-    {"key": "CAPTUR", "name": "캡처"},
-    {"key": "ZOE", "name": "조에"},
+    {"key": "XM3", "name": "XM3"}, {"key": "SM3", "name": "SM3"},
+    {"key": "SM5", "name": "SM5"}, {"key": "SM7", "name": "SM7"},
+    {"key": "QM3", "name": "QM3"}, {"key": "ARKANA", "name": "아르카나"},
+    {"key": "MASTER", "name": "마스터"}, {"key": "QM5", "name": "QM5"},
+    {"key": "CLIO", "name": "클리오"}, {"key": "TWIZY", "name": "트위지"},
+    {"key": "CAPTUR", "name": "캡처"}, {"key": "ZOE", "name": "조에"},
 ]
 
 stats_models = []
@@ -89,6 +108,11 @@ for m in MODELS:
         d = load(f"encar_{m['key']}.json")
     except FileNotFoundError:
         continue
+    try:
+        flags = load(f"flags_{m['key']}.json")
+    except FileNotFoundError:
+        flags = {}
+
     by_fuel = collections.defaultdict(list)
     for r in d["items"]:
         fk = FUEL_MAP.get(r[3], "other")
@@ -96,45 +120,34 @@ for m in MODELS:
 
     fuels = {}
     for fk, items in by_fuel.items():
-        if len(items) < 10:
-            continue
-        seen, uniq = set(), []
+        if len(items) < 10: continue
+        groups = collections.defaultdict(list)
         for r in items:
-            k = (r[1], r[2], r[4], r[5], r[6])
-            if k in seen: continue
-            seen.add(k); uniq.append(r)
-        rows = [{"badge": r[2], "year": int(r[4]) // 100, "km": int(r[5]), "price": int(r[6]), "trim": trim_of(r[2])}
-                for r in uniq]
+            groups[(r[1], r[2], r[4], r[5], r[6])].append(str(r[0]))
 
-        years = {}
-        for yv in sorted({r["year"] for r in rows}):
-            rs = [r for r in rows if r["year"] == yv]
-            if len(rs) < 3: continue
-            prices = [r["price"] for r in rs]
-            kms = [r["km"] for r in rs]
-            trims = {}
-            for tv in sorted({r["trim"] for r in rs}):
-                tr = [r for r in rs if r["trim"] == tv]
-                if len(tr) >= 5:
-                    tp = [r["price"] for r in tr]; tk = [r["km"] for r in tr]
-                    trims[tv] = {"n": len(tr), "median": round(statistics.median(tp)),
-                                 "p25": round(pct(tp, 25)), "p75": round(pct(tp, 75)),
-                                 "median_km": round(statistics.median(tk))}
-            years[str(yv)] = {
-                "n": len(rs), "median": round(statistics.median(prices)),
-                "p25": round(pct(prices, 25)), "p75": round(pct(prices, 75)),
-                "p10": round(pct(prices, 10)), "p90": round(pct(prices, 90)),
-                "min": min(prices), "max": max(prices),
-                "median_km": round(statistics.median(kms)),
-                "mean_km": round(statistics.mean(kms)),
-                "bins": hist_bins(prices), "trims": trims,
-            }
-        if not years: continue
-        slope = km_slope(rows)
+        rows_all, rows_clean = [], []
+        for sig, ids in groups.items():
+            model_name, badge, ym, km, price = sig
+            fl = [flags.get(i, {}) for i in ids]
+            rental = any(x.get("rental") for x in fl)
+            serious = any(
+                x.get("total_loss") or x.get("flood") or x.get("theft") or
+                ((int(x.get("my_cost") or 0) + int(x.get("other_cost") or 0)) >= SERIOUS_ACCIDENT_COST)
+                for x in fl)
+            row = {"badge": badge, "year": int(ym) // 100, "km": int(km), "price": int(price),
+                   "trim": trim_of(badge), "rental": rental, "serious": serious}
+            rows_all.append(row)
+            if not rental and not serious:
+                rows_clean.append(row)
+
+        va = variant_stats(rows_all)
+        vc = variant_stats(rows_clean)
+        if not va["years"]: continue
         fuels[fk] = {
-            "label": FUEL_LABEL.get(fk, fk), "total": len(rows), "raw": len(items),
-            "km_slope_per_10k": slope if slope is not None else -30.0,
-            "years": years,
+            "label": FUEL_LABEL.get(fk, fk), "raw": len(items),
+            "total": len(rows_all), "total_clean": len(rows_clean),
+            "excluded": len(rows_all) - len(rows_clean),
+            "variants": {"all": va, "clean": vc},
         }
 
     if not fuels: continue
@@ -144,7 +157,7 @@ for m in MODELS:
         entry["new_price_note"] = m["new_price_note"]
     stats_models.append(entry)
 
-# option take rates per model
+# options
 DICT = load("encar_options_standard.json")
 names = {}
 def walk(o):
@@ -162,7 +175,6 @@ DISPLAY_CODES = {
     "086": "후측방 경보 시스템", "088": "차선이탈 경보 시스템(LDWS)", "091": "마사지 시트",
     "094": "전자식 주차브레이크(EPB)", "095": "헤드업 디스플레이(HUD)",
 }
-
 SAMPLE_FILES = {"QM6": "sample300_QM6.json", "SM6": "sample300_SM6.json"}
 rates = {}
 for m in MODELS:
@@ -183,12 +195,13 @@ options_out = {"codes": [{"code": c, "name": n} for c, n in DISPLAY_CODES.items(
 meta = {
     "generated_at": "2026-11-21",
     "snapshot": "2026-11-21",
-    "source": "엔카 실매물 (르노코리아 14개 모델, 중복 제거)",
+    "source": "엔카 실매물 (르노코리아 14개 모델, 중복 제거, 차량이력 API 교차)",
+    "exclude_note": "렌터카 이력, 전손·침수·도난, 500만원 이상 사고 매물 제외",
     "notes": [
         "모든 금액은 판매자 등록가(호가) 기준이며 실계약가는 3~10% 낮을 수 있습니다.",
+        "기본 계산은 렌터카·전손·침수·도난·500만원 이상 사고 이력 매물을 제외합니다.",
         "옵션은 가격 가산 없이 장착률 정보로만 표시합니다 (300대 분석 결과 양의 프리미엄 미확인).",
         "표본 10대 미만 연식은 신뢰도 낮음으로 표시됩니다.",
-        "모델·연료별 표본이 적은 경우 계산 범위가 넓어질 수 있습니다.",
     ],
 }
 
@@ -197,5 +210,7 @@ json.dump(options_out, open(os.path.join(OUT, "options.json"), "w", encoding="ut
 json.dump(meta, open(os.path.join(OUT, "meta.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
 print("models:", len(stats_models))
 for m in stats_models:
-    fuels = ", ".join(f"{f['label']}:{f['total']}" for f in m["fuels"].values())
-    print(m["key"], "|", fuels)
+    parts = []
+    for fk, f in m["fuels"].items():
+        parts.append(f"{f['label']}:{f['total']}→{f['total_clean']}")
+    print(m["key"], "|", ", ".join(parts))

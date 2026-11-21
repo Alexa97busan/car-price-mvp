@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>중고차 적정가 — 르노 중고차 시세</title>
 <meta name="description" content="르노코리아 14개 모델 중고차 실매물 기반 적정가 계산기. 모델·연료·연식·주행·트림 조건으로 예상 가격 범위와 급매/적정/비쌈을 판정합니다.">
-<link rel="stylesheet" href="assets/style.css?v=20261121b">
+<link rel="stylesheet" href="assets/style.css?v=20261121c">
 </head>
 <body>
 
@@ -48,6 +48,12 @@
       </label>
       <input id="kmRange" class="slider" type="range" min="0" max="300000" step="1000" value="70000" aria-label="주행거리 슬라이더">
       <div class="scale"><span>0</span><span>15만</span><span>30만</span></div>
+
+      <label class="exclude-row">
+        <input type="checkbox" id="excludeFlags" checked>
+        <span>렌터카·사고 이력 매물 제외</span>
+        <span class="opt-tag">권장</span>
+      </label>
 
       <details class="opt-box" open>
         <summary>옵션 선택 <span id="optCount" class="opt-count">0개</span></summary>
@@ -126,6 +132,6 @@
   <span>본 계산기는 참고용이며 매매 판단의 책임은 사용자에게 있습니다.</span>
 </footer>
 
-<script src="assets/app.js?v=20261121b"></script>
+<script src="assets/app.js?v=20261121c"></script>
 </body>
 </html>
