@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>중고차 적정가 — QM6 · SM6 LPG</title>
-<meta name="description" content="르노 QM6·SM6 LPG 중고차 실매물 기반 적정가 계산기. 연식·주행·트림 조건으로 예상 가격 범위와 급매/적정/비쌈을 판정합니다.">
+<title>중고차 적정가 — 르노 중고차 시세</title>
+<meta name="description" content="르노코리아 14개 모델 중고차 실매물 기반 적정가 계산기. 모델·연료·연식·주행·트림 조건으로 예상 가격 범위와 급매/적정/비쌈을 판정합니다.">
 <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
@@ -28,7 +28,7 @@
           <select id="model"></select>
         </label>
         <label class="field">연료
-          <select id="fuel"><option value="LPG">LPG</option></select>
+          <select id="fuel"></select>
         </label>
       </div>
 
@@ -52,7 +52,7 @@
       <details class="opt-box" open>
         <summary>옵션 선택 <span id="optCount" class="opt-count">0개</span></summary>
         <div id="optList" class="opt-list"></div>
-        <p class="hint">옵션은 가격에 가산하지 않고, 장착률 정보로만 표시합니다. <a href="#why">이유</a></p>
+        <p class="hint" id="optNote">옵션은 가격에 가산하지 않고, 장착률 정보로만 표시합니다.</p>
       </details>
 
       <label class="field price-field">매물 가격 <span class="opt-tag">선택</span>
@@ -105,7 +105,7 @@
     <section class="card">
       <h2>옵션 장착률</h2>
       <div id="optStats" class="stat-list"></div>
-      <p class="hint">최근 300대 표본 기준. 옵션 유무는 가격 차이를 만들지 않는 것으로 분석되어 가산하지 않습니다.</p>
+      <p class="hint" id="optSampleNote">최근 표본 기준. 옵션 유무는 가격 차이를 만들지 않는 것으로 분석되어 가산하지 않습니다.</p>
     </section>
 
     <section class="card" id="why">
@@ -122,7 +122,7 @@
 </main>
 
 <footer class="wrap footer">
-  <span>데이터: 엔카 실매물 LPG 스냅샷 <span id="snapshotDate">—</span> · 중복 제거 기준</span>
+  <span>데이터: 엔카 실매물 스냅샷 <span id="snapshotDate">—</span> · 르노코리아 14개 모델 · 중복 제거</span>
   <span>본 계산기는 참고용이며 매매 판단의 책임은 사용자에게 있습니다.</span>
 </footer>
 
